@@ -71,7 +71,7 @@ plus an embedded REST depth snapshot, so the replay needs no Binance connection.
 After the local install:
 
 ```bash
-python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz
+MDS_DATA_DIR=data-replay python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz
 ```
 
 Open <http://localhost:8000>. The header and the tape badge show `replay`
@@ -81,14 +81,13 @@ default. `--replay-speed` accelerates it without changing the recorded event
 timestamps:
 
 ```bash
-python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz --replay-speed 10
+MDS_DATA_DIR=data-replay python -m market_data_service \
+  --replay examples/btcusdt-5m.jsonl.gz --replay-speed 10
 ```
 
-Use a fresh data directory to keep replay rows separate from previous runs:
-
-```bash
-MDS_DATA_DIR=data-replay python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz
-```
+Both commands use `data-replay`, so replay rows never mix with a live `data`
+directory. Delete `data-replay` to start from scratch. On PowerShell, set
+`$env:MDS_DATA_DIR="data-replay"` before the command.
 
 The replay goes through the same Parquet writer, candle aggregator, API and
 dashboard as the live mode. It never constructs a Binance client. A trade gap in
@@ -133,6 +132,10 @@ the published image directly:
 docker run --rm -p 8000:8000 -v market-data:/data \
   ghcr.io/ikerabad/market-data-service:0.1.0
 ```
+
+Tags follow Git tags. The `0.1.0` image is the release snapshot; the replay mode
+in this README is newer and is built by the local image command in the replay
+section.
 
 ## Local development
 
@@ -327,7 +330,7 @@ pytest -m integration -q
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/health` | Liveness, ingestion and book readiness |
+| `GET` | `/api/v1/health` | Liveness, mode, ingestion and book readiness |
 | `GET` | `/api/v1/price?symbol=BTCUSDT` | Latest trade |
 | `GET` | `/api/v1/candles?interval=1m&limit=200` | OHLCV, intervals `1s`, `5s`, `1m` |
 | `GET` | `/api/v1/book?limit=20` | Current book, or the last snapshot from Parquet |
