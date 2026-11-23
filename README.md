@@ -1,5 +1,7 @@
 # market-data-service
 
+[![CI](https://github.com/IkerAbad/market-data-service/actions/workflows/ci.yml/badge.svg)](https://github.com/IkerAbad/market-data-service/actions/workflows/ci.yml)
+
 A read-only market data service that ingests Binance spot data in real time,
 stores it as a partitioned Parquet lake and serves it through a FastAPI HTTP
 API, a live WebSocket and a small browser dashboard.
@@ -8,6 +10,9 @@ API, a live WebSocket and a small browser dashboard.
 
 The dashboard is served by the service itself. The screenshot above is a real
 capture of a local run streaming `BTCUSDT`, with the 5-second interval selected.
+To reproduce it, run `docker compose up --build`, open
+<http://localhost:8000>, wait until the book is synchronized and pick `5s` in
+the chart header.
 
 ## What it does
 

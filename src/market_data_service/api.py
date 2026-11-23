@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -22,8 +22,6 @@ from market_data_service.aggregator import SUPPORTED_INTERVALS, bucket_end
 from market_data_service.config import Settings
 from market_data_service.models import Candle, Trade
 from market_data_service.service import Service
-
-log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 SYMBOL_PATTERN = r"^[A-Z0-9]{5,20}$"
@@ -332,6 +330,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             sender.cancel()
             service.hub.unsubscribe(queue)
+            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect):
+                await sender
 
     @app.get("/", include_in_schema=False)
     async def dashboard() -> FileResponse:
