@@ -105,6 +105,7 @@ def test_status_and_metrics(tmp_path: Path) -> None:
         assert metrics.status_code == 200
         assert "mds_ws_connected" in metrics.text
         assert "mds_ingest_lag_seconds" in metrics.text
+        assert "mds_write_lag_seconds" in metrics.text
 
 
 def test_health_and_dashboard(tmp_path: Path) -> None:

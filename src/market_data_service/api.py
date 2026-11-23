@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -281,7 +281,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return BookOut(
             symbol=resolved.symbol,
             update_id=0,
-            time=datetime.now(UTC),
+            time=dep.now(),
             bids=[
                 LevelOut(price=Decimal(level["price"]), quantity=Decimal(level["quantity"]))
                 for level in persisted["bids"]

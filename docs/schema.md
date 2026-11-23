@@ -47,7 +47,7 @@ One row per Binance aggregate trade (`<symbol>@aggTrade`).
 | `first_trade_id` | `uint64` | | First raw trade id in the aggregate (`f`) |
 | `last_trade_id` | `uint64` | | Last raw trade id in the aggregate (`l`) |
 | `is_buyer_maker` | `bool` | | `true` means the aggressor was a seller |
-| `ingested_at` | `timestamp[us, UTC]` | | Local receive time |
+| `ingested_at` | `timestamp[us, UTC]` | | Local receive time plus `MDS_CLOCK_OFFSET_S` |
 
 Why aggregate trades: their ids are contiguous and `GET /api/v3/aggTrades`
 accepts `fromId`, which makes an exact gap repair possible without an API key.
@@ -121,6 +121,10 @@ ORDER BY bucket;
   with `datetime(1970, 1, 1, tzinfo=UTC) + timedelta(milliseconds=ms)`; no float
   division is involved.
 * `event_time` is when the exchange produced the event. `ingested_at` is when
-  this process received it. `lag_seconds = ingested_at - event_time` is exported
-  as `mds_ingest_lag_seconds` and as a histogram.
+  this process received it, plus the optional `MDS_CLOCK_OFFSET_S`. The offset is
+  zero by default. The benchmark measures the host offset against Binance and
+  sets it for the measurement run, so exchange-to-write latency is expressed in
+  exchange time.
+* `lag_seconds = ingested_at - event_time` is exported as
+  `mds_ingest_lag_seconds` and as a histogram.
 * Candles cover `[open_time, close_time)`. `close_time` in the API is exclusive.

@@ -1,0 +1,56 @@
+{
+  "date_utc": "2026-11-23 15:19:10",
+  "end_utc": "2026-11-23 15:29:17",
+  "duration_s": 600.0345711708069,
+  "symbol": "BTCUSDT",
+  "connected_at_end": true,
+  "clock_offset_s": 1.3518760204315186,
+  "hardware": {
+    "cpu_model": "AMD Ryzen 9 5900X 12-Core Processor",
+    "physical_cores": 12,
+    "logical_cores": 24,
+    "ram_gib": 31.912029266357422,
+    "os": "Windows-11-10.0.26300-SP0",
+    "python": "3.12.10"
+  },
+  "throughput": {
+    "messages": 26168,
+    "messages_per_s": 43.61082053812358,
+    "trade_messages": 20247,
+    "trade_messages_per_s": 33.74305577175895,
+    "depth_messages": 5921,
+    "depth_messages_per_s": 9.867764766364633,
+    "trades_ingested": 20247,
+    "gaps_detected": 0,
+    "backfilled": 0,
+    "missing": 0
+  },
+  "latency": {
+    "clock_offset_s": 1.3518760204315186,
+    "ingest_p50": 0.1887559179379274,
+    "ingest_p95": 0.7852894902454367,
+    "ingest_mean": 0.279216582357888,
+    "write_p50": 3.1202449754161994,
+    "write_p95": 8.594599492569772,
+    "write_mean": 3.2031453888078554
+  },
+  "storage": {
+    "trades_stored": 21340,
+    "trades_bytes": 1049959.0,
+    "book_bytes": 552778.0,
+    "trade_bytes_per_row": 49.2014526710403,
+    "bytes_per_million_trades": 49201452.671040304,
+    "disk_bytes_per_hour": 9026848.438956928,
+    "trade_bytes_per_hour": 5913522.156235724,
+    "trades_files": 117,
+    "book_files": 105,
+    "uptime_s": 639.188
+  },
+  "process": {
+    "rss_average_mib": 106.12803460743801,
+    "rss_peak_mib": 111.171875,
+    "cpu_seconds": 9.734375,
+    "cpu_cores": 0.016222687556140883,
+    "cpu_percent_one_core": 1.6222687556140882
+  }
+}

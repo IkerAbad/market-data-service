@@ -59,6 +59,24 @@ MDS_SYMBOL=ETHUSDT docker compose up --build
 `docker compose down` keeps both volumes. `docker compose down -v` deletes the
 Parquet lake and the Prometheus database.
 
+## Container image
+
+Pushing a `v*` tag builds and publishes the image from the workflow:
+
+```bash
+docker pull ghcr.io/ikerabad/market-data-service:0.1.0
+docker pull ghcr.io/ikerabad/market-data-service:latest
+```
+
+The tag workflow publishes the semantic version, the `major.minor` tag and
+`latest` to GitHub Container Registry. The compose file builds locally; to run
+the published image directly:
+
+```bash
+docker run --rm -p 8000:8000 -v market-data:/data \
+  ghcr.io/ikerabad/market-data-service:0.1.0
+```
+
 ## Local development
 
 Python 3.12 is required.
@@ -93,6 +111,9 @@ src/market_data_service/
 ├── api.py          REST, WebSocket and static dashboard
 └── static/         HTML, CSS and JavaScript, no framework
 
+scripts/
+└── benchmark.py    measured throughput, latency, disk and memory harness
+
 tests/
 ├── fake_exchange.py          fake WebSocket + REST exchange
 ├── fixtures/agg_trades.jsonl messages replayed by the fake exchange
@@ -102,6 +123,7 @@ tests/
 ├── test_query.py              DuckDB queries
 ├── test_depth.py              snapshot anchoring and resync
 ├── test_api.py                HTTP and WebSocket API
+├── test_ingestion.py          backoff bounds
 └── test_integration_gap.py    five-second network cut, end to end
 ```
 
@@ -123,6 +145,88 @@ Prices and quantities are `decimal128(38, 12)`, timestamps are
 `timestamp[us, UTC]`, and `quote_quantity` is derived without floats. Files are
 rotated at 50 000 rows, 64 MiB or 5 seconds, whichever comes first.
 
+## Performance
+
+Measured on a dedicated run against the real Binance streams with the harness
+in [`scripts/benchmark.py`](scripts/benchmark.py). The report is written by the
+command itself:
+
+```bash
+python scripts/benchmark.py --duration 600 --symbol BTCUSDT --report docs/benchmark.md
+```
+
+The full Markdown report and the raw JSON are
+[docs/benchmark.md](docs/benchmark.md) and
+[docs/benchmark.json](docs/benchmark.json).
+
+| Metric | Measured |
+|---|---|
+| Date (UTC) | 2026-11-23 15:19:10 |
+| Measurement window | 600.0 s |
+| Host | AMD Ryzen 9 5900X, 12 cores / 24 threads, 31.9 GiB RAM |
+| OS / Python | Windows 11 (10.0.26300) / 3.12.10 |
+| Clock offset applied | +1.352 s |
+| WebSocket messages | 26,168 (43.61/s) |
+| — trade messages | 20,247 (33.74/s) |
+| — depth messages | 5,921 (9.87/s) |
+| Trades ingested | 20,247 |
+| Trades persisted, whole run | 21,340 |
+| Gaps / backfilled / missing | 0 / 0 / 0 |
+| Exchange → WebSocket ingest | p50 188.8 ms, p95 785.3 ms, mean 279.2 ms |
+| Exchange → Parquet write | p50 3.12 s, p95 8.59 s, mean 3.20 s |
+| Trade data | 1.00 MiB |
+| Book data | 539.82 KiB |
+| Trade bytes per row | 49.2 B |
+| Disk per million trades | 46.92 MiB |
+| Disk growth | 8.61 MiB/h |
+| Trade files / book files | 117 / 105 |
+| RSS average / peak | 106.1 / 111.2 MiB |
+| CPU average | 0.016 cores (1.6% of one core) |
+
+The throughput and ingest figures cover the 600 s window. The write-latency
+histogram covers every file written by the process, including the 30 s warmup.
+
+The latency figures are bucket-interpolated from the service's own Prometheus
+histograms. The benchmark measures the host clock offset against
+`GET /api/v3/time` and applies it to the service as `MDS_CLOCK_OFFSET_S`, so the
+write latency uses exchange time. Disk figures are file sizes reported by
+`/api/v1/status` after the final drain. The per-million figure divides by the
+measured persisted trade count, and the hourly rate uses the process uptime.
+The table below transcribes the generated report; `docs/benchmark.json` holds
+the raw numbers.
+
+## Cost of running
+
+The measured consumption for one BTCUSDT stream, normalized to one hour from the
+same 600 s run:
+
+| Resource | Measured per hour |
+|---|---|
+| Parquet growth, trades and book | 8.61 MiB/h |
+| Trades stored | 121,464/h (33.74 trades/s × 3,600) |
+| WebSocket messages | 156,996/h (43.61 messages/s × 3,600) |
+| CPU | 0.016 core-hours per hour (1.6% of one core) |
+| Memory | 106.1 MiB average, 111.2 MiB peak |
+
+CPU is an average level and memory is resident memory, not an hourly
+accumulation. Disk and message counts are unit conversions of the measured
+rates. These figures cover the `market-data-service` process only; Docker,
+Prometheus and its time-series database are not included. Network traffic is not
+measured per process.
+
+No monetary price is quoted. CPU, RAM and disk prices depend on the provider,
+region and commitment, and inventing one would contradict the measurement rule.
+Given a provider's prices, the hourly cost is:
+
+```text
+cost/h = 0.016 × cpu_price_per_core_hour
+       + 0.109 × ram_price_per_gib_hour
+       + 0.0084 × disk_price_per_gib_hour
+```
+
+The RAM term uses the measured peak (111.2 MiB = 0.109 GiB) and the disk term
+uses 8.61 MiB/h = 0.0084 GiB/h. The CPU term is the measured average.
+
 ## Ingestion and recovery
 
 The trade stream is ordered by aggregate trade id. If an inbound id is not
@@ -138,8 +242,9 @@ A reconnect triggers the same path, and the order book is rebuilt from a fresh
 REST snapshot before it is used again. Reconnection uses exponential backoff
 with equal jitter: `delay = min(cap, base * 2^attempt) / 2 + U(0, delay / 2)`.
 
-The integration test `test_five_second_cut_is_backfilled_without_gaps` proves
-the behavior end to end. A fake exchange replays
+The integration test
+`tests/test_integration_gap.py::test_five_second_cut_is_backfilled_without_gaps`
+proves the behavior end to end. A fake exchange replays
 `tests/fixtures/agg_trades.jsonl`: it sends 20 trades, closes the socket, refuses
 connections for five seconds and resumes at trade 26. Trades 21 to 25 are only
 obtainable through REST. The test checks that:
@@ -197,8 +302,9 @@ its own with backoff. No build step, no CDN, no framework.
 | `mds_ws_messages_total{stream}` | counter | Frames accepted per stream |
 | `mds_ws_reconnects_total` | counter | Reconnection attempts after failures |
 | `mds_ws_connected` | gauge | 1 while the socket is open |
-| `mds_ingest_lag_seconds` | gauge | Local clock minus last trade event time |
+| `mds_ingest_lag_seconds` | gauge | Local clock plus offset minus last trade event time |
 | `mds_message_latency_seconds` | histogram | Arrival latency distribution |
+| `mds_write_lag_seconds` | histogram | Exchange timestamp to Parquet write |
 | `mds_trades_ingested_total` | counter | Trades accepted into the pipeline |
 | `mds_trades_backfilled_total` | counter | Trades recovered through REST |
 | `mds_trades_missing_total` | counter | Ids that could not be recovered |
@@ -217,6 +323,7 @@ Useful PromQL:
 rate(mds_ws_messages_total[1m])
 rate(mds_ws_messages_total{stream="trade"}[1m])
 histogram_quantile(0.95, rate(mds_message_latency_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(mds_write_lag_seconds_bucket[5m]))
 increase(mds_trades_backfilled_total[10m])
 ```
 
@@ -240,6 +347,7 @@ All settings are environment variables with the `MDS_` prefix.
 | `MDS_MAX_BACKFILL_TRADES` | `50000` | Recovery budget per gap |
 | `MDS_ENABLE_INGESTION` | `true` | Disable ingestion for tests or static reads |
 | `MDS_LOG_LEVEL` | `INFO` | Python log level |
+| `MDS_CLOCK_OFFSET_S` | `0.0` | Added to host timestamps; used by the benchmark |
 
 The compose file reads `MDS_SYMBOL`, `MDS_HTTP_PORT` and `PROMETHEUS_PORT` from
 the environment or a local `.env` file. See `.env.example`.
@@ -247,9 +355,9 @@ the environment or a local `.env` file. See `.env.example`.
 ## Tests and CI
 
 ```bash
-ruff check src tests
-ruff format --check src tests
-mypy src tests
+ruff check src tests scripts
+ruff format --check src tests scripts
+mypy src tests scripts
 pytest -q
 ```
 
@@ -257,7 +365,22 @@ The suite includes parser and aggregator unit tests, storage and DuckDB tests,
 order book resync tests, API tests and the five-second recovery integration
 test. CI runs lint, formatting, strict mypy and the full test suite on Python
 3.12, then builds the image and exercises `docker compose up`, the dashboard,
-the metrics endpoint and Prometheus.
+the metrics endpoint and Prometheus. A second job clones the public repository
+into a fresh temporary directory and repeats the full suite and
+`docker compose up` from that clone.
+
+On a Linux machine with Docker, the clone validation can be reproduced with:
+
+```bash
+git clone https://github.com/IkerAbad/market-data-service.git "$TMPDIR/mds-clone"
+cd "$TMPDIR/mds-clone"
+python -m venv .venv
+. .venv/bin/activate
+pip install -e ".[dev]"
+pytest -q
+docker compose up -d --build
+docker compose down -v
+```
 
 ## Design decisions
 
@@ -281,7 +404,8 @@ infrastructure.
 **Dependencies.** FastAPI and uvicorn serve HTTP; websockets speaks the stream;
 httpx performs REST backfill; pyarrow writes Parquet; duckdb reads it; pytz is
 required by DuckDB to convert timezone-aware timestamps to Python objects;
-prometheus-client exposes metrics; pytest, ruff and mypy are development tools.
+prometheus-client exposes metrics; pytest, ruff, mypy and psutil are development
+tools. psutil is only used by `scripts/benchmark.py`.
 
 ## Limitations
 
@@ -293,6 +417,8 @@ prometheus-client exposes metrics; pytest, ruff and mypy are development tools.
   retention of aggregate trades. Very long outages can leave reported holes.
 - Book history is sampled, not exhaustive: the lake does not contain every
   diff update.
+- The service trusts the host clock. If the host is not synchronized, set
+  `MDS_CLOCK_OFFSET_S` from a measured offset or fix NTP.
 - No authentication, no multi-tenant isolation, no SLA. This is a read-only
   reference service, not a trading system.
 

@@ -195,8 +195,8 @@ class Ingestor:
             self._depth.on_update(event)
 
     async def _on_trade(self, trade: Trade) -> None:
-        lag = max(0.0, (trade.ingested_at - trade.event_time).total_seconds())
-        metrics.MESSAGE_LATENCY.observe(lag)
+        lag = (trade.ingested_at - trade.event_time).total_seconds()
+        metrics.MESSAGE_LATENCY.observe(max(0.0, lag))
         metrics.INGEST_LAG.set(lag)
         if self._last_event_time is None or trade.event_time > self._last_event_time:
             self._last_event_time = trade.event_time
@@ -302,7 +302,7 @@ class Ingestor:
         now = self._clock()
         lag: float | None = None
         if self._last_event_time is not None:
-            lag = max(0.0, (now - self._last_event_time).total_seconds())
+            lag = (now - self._last_event_time).total_seconds()
         return {
             "connected": self._connected,
             "symbol": self._settings.symbol,

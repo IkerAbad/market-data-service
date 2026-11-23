@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from market_data_service.aggregator import CandleAggregator
@@ -28,6 +28,7 @@ class Service:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.data_dir = Path(settings.data_dir)
+        self._clock_offset = timedelta(seconds=settings.clock_offset_s)
         self.analytics = Analytics(self.data_dir)
         self.store = ParquetStore(
             self.data_dir,
@@ -36,6 +37,7 @@ class Service:
                 max_bytes=settings.flush_max_bytes,
                 max_age_s=settings.flush_interval_s,
             ),
+            clock_offset_s=settings.clock_offset_s,
         )
         self.hub = EventHub()
         self.client = BinanceClient(settings.binance_rest_base)
@@ -54,10 +56,15 @@ class Service:
             sink=self.pipeline,
             depth=self.depth,
             last_trade_id=self.analytics.max_trade_id(settings.symbol),
+            clock=self.now,
         )
         self._ingest_task: asyncio.Task[None] | None = None
         self._started_at: float | None = None
         self._started_ingestion = False
+
+    def now(self) -> datetime:
+        """Host time plus the configured measurement offset."""
+        return datetime.now(UTC) + self._clock_offset
 
     @property
     def uptime_seconds(self) -> float:
@@ -108,5 +115,5 @@ class Service:
             },
             "websocket_clients": self.hub.subscribers,
             "uptime_seconds": round(self.uptime_seconds, 3),
-            "server_time": datetime.now(UTC),
+            "server_time": self.now(),
         }

@@ -95,6 +95,9 @@ class Settings:
     log_level: str = "INFO"
     enable_ingestion: bool = True
 
+    # Measurement aid: add this offset to host timestamps. Zero by default.
+    clock_offset_s: float = 0.0
+
     @property
     def stream_names(self) -> str:
         """Combined-stream names for the configured symbol."""
@@ -133,4 +136,5 @@ class Settings:
             port=_env_int("PORT", 8000),
             log_level=_env_str("LOG_LEVEL", "INFO").upper(),
             enable_ingestion=_env_bool("ENABLE_INGESTION", True),
+            clock_offset_s=_env_float("CLOCK_OFFSET_S", 0.0, minimum=-86_400.0),
         )

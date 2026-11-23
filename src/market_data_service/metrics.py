@@ -74,6 +74,11 @@ MESSAGE_LATENCY = Histogram(
     "Time between the exchange timestamp and local ingestion.",
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60),
 )
+WRITE_LAG = Histogram(
+    "mds_write_lag_seconds",
+    "Time between the exchange event timestamp and the Parquet write.",
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120),
+)
 
 
 def refresh_writer_gauges(buffered_rows: int) -> None:
