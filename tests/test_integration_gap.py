@@ -59,12 +59,12 @@ def _stored_ids(tmp_path: Path) -> list[int]:
 @pytest.mark.integration
 async def test_five_second_cut_is_backfilled_without_gaps(tmp_path: Path) -> None:
     exchange = FakeExchange(
-        total=TOTAL_TRADES,
         first_batch=20,
         resume_at=26,
         downtime=DOWNTIME_S,
     )
     exchange.start()
+    assert exchange.total == TOTAL_TRADES
     settings = Settings(
         symbol="BTCUSDT",
         data_dir=tmp_path,

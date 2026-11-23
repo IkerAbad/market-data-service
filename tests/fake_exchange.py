@@ -7,17 +7,17 @@ import json
 import socket
 import threading
 import time
-from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, WebSocket
 
-from tests.support import T0, agg_trade_payload
+FIXTURE = Path(__file__).parent / "fixtures" / "agg_trades.jsonl"
 
 
 class FakeExchange:
-    """Replays a deterministic sequence of aggregate trades.
+    """Replays the aggregate trades stored in ``FIXTURE``.
 
     The first WebSocket connection receives ``first_batch`` trades and is then
     closed. The server rejects connections for exactly ``downtime`` seconds.
@@ -28,15 +28,15 @@ class FakeExchange:
     def __init__(
         self,
         *,
-        total: int = 45,
         first_batch: int = 20,
         resume_at: int = 26,
         downtime: float = 5.0,
     ) -> None:
-        self.total = total
+        self._frames = self._load_frames()
+        self._trades = [frame["data"] for frame in self._frames]
+        self.total = len(self._frames)
         self.resume_at = resume_at
         self.downtime = downtime
-        self._trades = self._build_trades(total)
         self._first_batch = first_batch
         self._first_done = False
         self._served_resume = False
@@ -51,13 +51,12 @@ class FakeExchange:
         self.app = self._build_app()
 
     @staticmethod
-    def _build_trades(total: int) -> list[dict[str, Any]]:
-        trades: list[dict[str, Any]] = []
-        for trade_id in range(1, total + 1):
-            ts = T0 + timedelta(milliseconds=100 * trade_id)
-            price = f"{61250 + trade_id * 0.5:.2f}"
-            trades.append(agg_trade_payload(trade_id, ts=ts, price=price, quantity="0.01"))
-        return trades
+    def _load_frames() -> list[dict[str, Any]]:
+        text = FIXTURE.read_text(encoding="utf-8")
+        frames = [json.loads(line) for line in text.splitlines() if line.strip()]
+        if not frames:
+            raise ValueError(f"empty fixture: {FIXTURE}")
+        return frames
 
     def _build_app(self) -> FastAPI:
         app = FastAPI()
@@ -71,10 +70,8 @@ class FakeExchange:
                     self._first_done = True
                     self._cut_at = time.monotonic()
             if first:
-                for payload in self._trades[: self._first_batch]:
-                    await websocket.send_text(
-                        json.dumps({"stream": "btcusdt@aggTrade", "data": payload})
-                    )
+                for frame in self._frames[: self._first_batch]:
+                    await websocket.send_text(json.dumps(frame))
                     await asyncio.sleep(0.004)
                 threading.Timer(self.downtime, self._resume).start()
                 await websocket.close()
@@ -87,10 +84,8 @@ class FakeExchange:
                     await websocket.close()
                     return
                 self._served_resume = True
-            for payload in self._trades[self.resume_at - 1 :]:
-                await websocket.send_text(
-                    json.dumps({"stream": "btcusdt@aggTrade", "data": payload})
-                )
+            for frame in self._frames[self.resume_at - 1 :]:
+                await websocket.send_text(json.dumps(frame))
                 await asyncio.sleep(0.004)
             self._finished.set()
             await asyncio.sleep(0.2)

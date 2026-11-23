@@ -321,26 +321,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             while True:
                 await websocket.send_text(await queue.get())
 
-        async def drain() -> None:
-            while True:
-                await websocket.receive_text()
-
-        tasks = [asyncio.create_task(pump()), asyncio.create_task(drain())]
+        sender = asyncio.create_task(pump())
         try:
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            for task in done:
-                if task.cancelled():
-                    continue
-                exception = task.exception()
-                if exception is not None and not isinstance(exception, WebSocketDisconnect):
-                    log.debug("websocket closed: %s", exception)
+            while True:
+                message = await websocket.receive()
+                if message["type"] == "websocket.disconnect":
+                    break
+        except WebSocketDisconnect:
+            pass
         finally:
+            sender.cancel()
             service.hub.unsubscribe(queue)
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
 
     @app.get("/", include_in_schema=False)
     async def dashboard() -> FileResponse:

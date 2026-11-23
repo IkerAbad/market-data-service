@@ -90,6 +90,7 @@ src/market_data_service/
 
 tests/
 ├── fake_exchange.py          fake WebSocket + REST exchange
+├── fixtures/agg_trades.jsonl messages replayed by the fake exchange
 ├── test_parser.py             normalization and validation
 ├── test_aggregator.py         OHLCV and bucket boundaries
 ├── test_storage.py            partitions, schema, rotation
@@ -133,9 +134,10 @@ REST snapshot before it is used again. Reconnection uses exponential backoff
 with equal jitter: `delay = min(cap, base * 2^attempt) / 2 + U(0, delay / 2)`.
 
 The integration test `test_five_second_cut_is_backfilled_without_gaps` proves
-the behavior end to end. A fake exchange sends 20 trades, closes the socket,
-refuses connections for five seconds and resumes at trade 26. Trades 21 to 25
-are only obtainable through REST. The test checks that:
+the behavior end to end. A fake exchange replays
+`tests/fixtures/agg_trades.jsonl`: it sends 20 trades, closes the socket, refuses
+connections for five seconds and resumes at trade 26. Trades 21 to 25 are only
+obtainable through REST. The test checks that:
 
 - the outage lasted at least five seconds,
 - five trades were recovered with `trades_backfilled == 5`,
