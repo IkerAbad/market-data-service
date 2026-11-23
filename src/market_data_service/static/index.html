@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Data Service</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark">MDS</span>
+        <span class="brand-sub">market data service</span>
+      </div>
+      <div class="ticker">
+        <span id="symbol" class="symbol">--</span>
+        <span id="price" class="price">--</span>
+        <span id="change" class="change muted">--</span>
+      </div>
+      <div class="conn">
+        <span id="dot" class="dot"></span>
+        <span id="conn-text">connecting</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel book-panel">
+        <div class="panel-head">
+          <h2>Order book</h2>
+          <span id="book-meta" class="muted">--</span>
+        </div>
+        <div class="book-cols"><span>price</span><span>size</span><span>total</span></div>
+        <div id="asks" class="book-side"></div>
+        <div class="spread">
+          <span id="spread-value">--</span>
+          <span class="muted">spread</span>
+        </div>
+        <div id="bids" class="book-side"></div>
+        <div class="book-foot muted">top 10 levels · 1 s samples</div>
+      </section>
+
+      <section class="panel chart-panel">
+        <div class="panel-head">
+          <h2>Candles</h2>
+          <div id="intervals" class="intervals">
+            <button type="button" data-interval="1" class="active">1s</button>
+            <button type="button" data-interval="5">5s</button>
+            <button type="button" data-interval="60">1m</button>
+          </div>
+          <span id="chart-meta" class="muted">--</span>
+        </div>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+        <div class="stats">
+          <div class="stat"><span class="stat-label">Last trade</span><span id="stat-price" class="stat-value">--</span></div>
+          <div class="stat"><span class="stat-label">Volume</span><span id="stat-volume" class="stat-value">--</span></div>
+          <div class="stat"><span class="stat-label">Trades</span><span id="stat-trades" class="stat-value">--</span></div>
+          <div class="stat"><span class="stat-label">Ingest lag</span><span id="stat-lag" class="stat-value">--</span></div>
+        </div>
+      </section>
+
+      <aside class="panel tape-panel">
+        <div class="panel-head">
+          <h2>Recent trades</h2>
+          <span class="live-badge"><span class="dot live"></span>live</span>
+        </div>
+        <div class="tape-cols"><span>price</span><span>size</span><span>time</span></div>
+        <div id="tape" class="tape"></div>
+        <div class="status-block">
+          <div class="status-row"><span>Ingestion</span><span id="st-ingest" class="value">--</span></div>
+          <div class="status-row"><span>Last trade id</span><span id="st-tradeid" class="value">--</span></div>
+          <div class="status-row"><span>Lag</span><span id="st-lag" class="value">--</span></div>
+          <div class="status-row"><span>Reconnects</span><span id="st-reconnects" class="value">--</span></div>
+          <div class="status-row"><span>Gaps detected</span><span id="st-gaps" class="value">--</span></div>
+          <div class="status-row"><span>Gaps recovered</span><span id="st-backfilled" class="value">--</span></div>
+          <div class="status-row"><span>Missing ids</span><span id="st-missing" class="value">--</span></div>
+          <div class="status-row"><span>Rows stored</span><span id="st-rows" class="value">--</span></div>
+          <div class="status-row"><span>Parquet files</span><span id="st-files" class="value">--</span></div>
+          <div class="status-row"><span>Uptime</span><span id="st-uptime" class="value">--</span></div>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <span>Public Binance data · read-only · UTC</span>
+      <span id="clock">--</span>
+    </footer>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

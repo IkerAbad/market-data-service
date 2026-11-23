@@ -1,0 +1,38 @@
+name: market-data-service
+
+services:
+  market-data-service:
+    build:
+      context: .
+    image: market-data-service:local
+    restart: unless-stopped
+    environment:
+      MDS_SYMBOL: ${MDS_SYMBOL:-BTCUSDT}
+      MDS_DATA_DIR: /data
+      MDS_HOST: 0.0.0.0
+      MDS_PORT: "8000"
+      MDS_LOG_LEVEL: INFO
+    ports:
+      - "${MDS_HTTP_PORT:-8000}:8000"
+    volumes:
+      - market-data:/data
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      market-data-service:
+        condition: service_healthy
+
+volumes:
+  market-data:
+  prometheus-data:

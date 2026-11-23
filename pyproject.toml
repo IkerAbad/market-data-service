@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-data-service"
+version = "0.1.0"
+description = "Real-time public market data ingestion, Parquet lake and analytics API."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Iker Abad" }]
+keywords = ["market-data", "binance", "parquet", "duckdb", "fastapi"]
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "duckdb>=1.2,<2",
+    "fastapi>=0.115,<1",
+    "httpx>=0.28,<1",
+    "prometheus-client>=0.21,<1",
+    "pyarrow>=18,<23",
+    # DuckDB converts TIMESTAMP WITH TIME ZONE values through pytz.
+    "pytz>=2024.1",
+    "uvicorn[standard]>=0.32,<1",
+    "websockets>=14,<16",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.13,<2",
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<1",
+    "ruff>=0.8,<1",
+]
+
+[project.scripts]
+market-data-service = "market_data_service.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+market_data_service = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+markers = [
+    "integration: exercises a real WebSocket and HTTP server on localhost",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "pyarrow.*"]
+ignore_missing_imports = true
