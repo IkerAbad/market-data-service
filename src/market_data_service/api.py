@@ -256,8 +256,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         seconds = INTERVAL_SECONDS[interval]
         persisted = await dep.analytics.candles_async(symbol, seconds, limit)
         merged = {candle.open_time: candle for candle in persisted}
-        for candle in dep.aggregator.recent(seconds, limit):
-            merged[candle.open_time] = candle
+        if symbol == resolved.symbol:
+            for candle in dep.aggregator.recent(seconds, limit):
+                merged[candle.open_time] = candle
         ordered = sorted(merged.values(), key=lambda candle: candle.open_time)[-limit:]
         return [CandleOut.from_candle(candle) for candle in ordered]
 

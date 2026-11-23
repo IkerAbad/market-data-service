@@ -21,6 +21,7 @@ def _seed(tmp_path: Path) -> None:
     store.append_trade(make_trade(1, ts=T0, price="100.00"))
     store.append_trade(make_trade(2, ts=T0.replace(second=10), price="99.50"))
     store.append_trade(make_trade(3, ts=T0.replace(second=20), price="101.00", buyer_maker=True))
+    store.append_trade(make_trade(99, symbol="ETHUSDT", ts=T0, price="3000.00"))
     for update_id in (5, 6):
         store.append_book(
             BookSnapshot(
@@ -71,6 +72,13 @@ def test_candles_endpoint_merges_intervals(tmp_path: Path) -> None:
 
         seconds = client.get("/api/v1/candles", params={"interval": "1s", "limit": 10}).json()
         assert len(seconds) == 3
+
+        eth = client.get(
+            "/api/v1/candles",
+            params={"interval": "1m", "symbol": "ETHUSDT"},
+        ).json()
+        assert len(eth) == 1
+        assert eth[0]["open"] == "3000"
 
 
 def test_book_falls_back_to_parquet(tmp_path: Path) -> None:
@@ -123,5 +131,5 @@ def test_websocket_handshake(tmp_path: Path) -> None:
 def test_unknown_symbol_and_invalid_interval(tmp_path: Path) -> None:
     _seed(tmp_path)
     with _client(tmp_path) as client:
-        assert client.get("/api/v1/price", params={"symbol": "ETHUSDT"}).status_code == 404
+        assert client.get("/api/v1/price", params={"symbol": "SOLUSDT"}).status_code == 404
         assert client.get("/api/v1/candles", params={"interval": "7s"}).status_code == 422

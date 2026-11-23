@@ -69,6 +69,17 @@ def test_rotation_by_age(tmp_path: Path) -> None:
     assert store.rows_written == 1
 
 
+def test_rotation_by_estimated_bytes(tmp_path: Path) -> None:
+    store = ParquetStore(
+        tmp_path,
+        RotationPolicy(max_rows=100_000, max_bytes=1, max_age_s=3_600),
+    )
+    store.append_trade(make_trade(1))
+    paths = store.flush_stale()
+    assert len(paths) == 1
+    assert store.rows_written == 1
+
+
 def test_book_is_stored_in_long_form(tmp_path: Path) -> None:
     store = _store(tmp_path)
     snapshot = BookSnapshot(

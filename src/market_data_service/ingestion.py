@@ -198,7 +198,8 @@ class Ingestor:
         lag = max(0.0, (trade.ingested_at - trade.event_time).total_seconds())
         metrics.MESSAGE_LATENCY.observe(lag)
         metrics.INGEST_LAG.set(lag)
-        self._last_event_time = trade.event_time
+        if self._last_event_time is None or trade.event_time > self._last_event_time:
+            self._last_event_time = trade.event_time
 
         if self._backfilling:
             self._buffer_live(trade)

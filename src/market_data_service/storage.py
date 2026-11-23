@@ -156,14 +156,17 @@ class ParquetStore:
         return len(buffer.rows) >= self._policy.max_rows or buffer.nbytes >= self._policy.max_bytes
 
     def flush_stale(self, *, now: float | None = None) -> list[Path]:
-        """Flush every buffer older than the age threshold."""
+        """Flush every buffer that reached a size threshold or the age limit."""
         current = time.monotonic() if now is None else now
         return self._flush(
-            [
-                key
-                for key, buffer in self._buffers.items()
-                if current - buffer.opened_at >= self._policy.max_age_s
-            ]
+            [key for key, buffer in self._buffers.items() if self._is_due(buffer, current)]
+        )
+
+    def _is_due(self, buffer: _Buffer, now: float) -> bool:
+        return (
+            len(buffer.rows) >= self._policy.max_rows
+            or buffer.nbytes >= self._policy.max_bytes
+            or now - buffer.opened_at >= self._policy.max_age_s
         )
 
     def flush_all(self) -> list[Path]:

@@ -129,8 +129,6 @@ class Pipeline:
             if self._store.buffered_rows == 0:
                 continue
             await asyncio.to_thread(self._store.flush_stale)
-            if self._store.buffered_rows >= self._settings.flush_max_rows:
-                await asyncio.to_thread(self._store.flush_all)
             metrics.refresh_writer_gauges(self._store.buffered_rows)
             metrics.PARQUET_FILES.set(self._store.files_written)
             metrics.PARQUET_ROWS.set(self._store.rows_written)
