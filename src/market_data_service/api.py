@@ -163,9 +163,22 @@ class StorageStatus(BaseModel):
     trades_stored: int
 
 
+class ReplayStatus(BaseModel):
+    """Offline replay progress."""
+
+    file: str
+    speed: float
+    frames: int
+    position: int
+    finished: bool
+    error: str | None
+
+
 class StatusResponse(BaseModel):
     """Aggregated status payload."""
 
+    mode: str
+    replay: ReplayStatus | None
     ingest: IngestStatus
     storage: StorageStatus
     websocket_clients: int
@@ -177,6 +190,7 @@ class HealthResponse(BaseModel):
     """Liveness payload used by Docker and Prometheus."""
 
     status: str
+    mode: str
     symbol: str
     connected: bool
     book_ready: bool
@@ -217,6 +231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status = dep.ingestor.status()
         return HealthResponse(
             status="ok",
+            mode=dep.mode,
             symbol=resolved.symbol,
             connected=bool(status["connected"]),
             book_ready=bool(status["book_ready"]),
@@ -309,6 +324,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await websocket.send_json(
             {
                 "type": "hello",
+                "mode": service.mode,
                 "symbol": resolved.symbol,
                 "intervals": list(SUPPORTED_INTERVALS),
                 "depths": resolved.depth_levels,

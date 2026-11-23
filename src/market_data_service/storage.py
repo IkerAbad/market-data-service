@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -95,10 +96,12 @@ class ParquetStore:
         policy: RotationPolicy | None = None,
         *,
         clock_offset_s: float = 0.0,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._policy = policy or RotationPolicy()
-        self._clock_offset = timedelta(seconds=clock_offset_s)
+        offset = timedelta(seconds=clock_offset_s)
+        self._clock = clock or (lambda: datetime.now(UTC) + offset)
         self._buffers: dict[tuple[str, str, str], _Buffer] = {}
         self._files_written = 0
         self._rows_written = 0
@@ -208,7 +211,7 @@ class ParquetStore:
             pq.write_table(table, temporary, compression="zstd", use_dictionary=True)
             os.replace(temporary, destination)
             if dataset == "trades":
-                written_at = datetime.now(UTC) + self._clock_offset
+                written_at = self._clock()
                 for row in chunk:
                     lag = (written_at - row["event_time"]).total_seconds()
                     metrics.WRITE_LAG.observe(max(0.0, lag))

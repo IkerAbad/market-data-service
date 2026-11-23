@@ -95,8 +95,16 @@ class Settings:
     log_level: str = "INFO"
     enable_ingestion: bool = True
 
+    # Offline replay. ``replay_file`` disables live ingestion.
+    replay_file: Path | None = None
+    replay_speed: float = 1.0
+
     # Measurement aid: add this offset to host timestamps. Zero by default.
     clock_offset_s: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.replay_speed <= 0:
+            raise ValueError("replay speed must be positive")
 
     @property
     def stream_names(self) -> str:
@@ -115,6 +123,7 @@ class Settings:
         symbol = _env_str("SYMBOL", "BTCUSDT").strip().upper()
         if not _SYMBOL_RE.match(symbol):
             raise ValueError(f"invalid symbol {symbol!r}; expected e.g. BTCUSDT")
+        replay_raw = _raw("REPLAY_FILE")
         return cls(
             symbol=symbol,
             data_dir=Path(_env_str("DATA_DIR", "data")),
@@ -136,5 +145,7 @@ class Settings:
             port=_env_int("PORT", 8000),
             log_level=_env_str("LOG_LEVEL", "INFO").upper(),
             enable_ingestion=_env_bool("ENABLE_INGESTION", True),
+            replay_file=Path(replay_raw) if replay_raw else None,
+            replay_speed=_env_float("REPLAY_SPEED", 1.0, minimum=0.001),
             clock_offset_s=_env_float("CLOCK_OFFSET_S", 0.0, minimum=-86_400.0),
         )

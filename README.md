@@ -6,13 +6,14 @@ A read-only market data service that ingests Binance spot data in real time,
 stores it as a partitioned Parquet lake and serves it through a FastAPI HTTP
 API, a live WebSocket and a small browser dashboard.
 
-![Dashboard](docs/dashboard.png)
+![Dashboard live](docs/dashboard-live.gif)
 
-The dashboard is served by the service itself. The screenshot above is a real
-capture of a local run streaming `BTCUSDT`, with the 5-second interval selected.
-To reproduce it, run `docker compose up --build`, open
-<http://localhost:8000>, wait until the book is synchronized and pick `5s` in
-the chart header.
+The dashboard is served by the service itself. The animation above is a
+60-second capture of a local live run streaming `BTCUSDT`, with the 5-second
+interval selected. A still is in
+[docs/dashboard.png](docs/dashboard.png). To reproduce the live view, run
+`docker compose up --build`, open <http://localhost:8000>, wait until the book is
+synchronized and pick `5s` in the chart header.
 
 ## What it does
 
@@ -31,6 +32,8 @@ the chart header.
 - Streams trades, candles and top-of-book updates to the dashboard over
   `/ws`.
 - Exposes Prometheus metrics for throughput, lag, reconnects, gaps and storage.
+- Replays a recorded JSONL file at the original event pace, with no Binance
+  connection, through the same pipeline, API and dashboard.
 - Starts with `docker compose up`, with the data and metrics in named volumes.
 
 Only public endpoints are used. The service cannot place orders, does not need
@@ -58,6 +61,60 @@ MDS_SYMBOL=ETHUSDT docker compose up --build
 
 `docker compose down` keeps both volumes. `docker compose down -v` deletes the
 Parquet lake and the Prometheus database.
+
+## Replay mode
+
+The repository ships `examples/btcusdt-5m.jsonl.gz`, a 5.5-minute BTCUSDT
+recording under 5 MiB. It contains the raw `aggTrade` and `depth@100ms` frames
+plus an embedded REST depth snapshot, so the replay needs no Binance connection.
+
+After the local install:
+
+```bash
+python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz
+```
+
+Open <http://localhost:8000>. The header and the tape badge show `replay`
+instead of `live`. The service serves the API, the dashboard and the WebSocket
+while the file is replayed. The replay runs at the original event pace by
+default. `--replay-speed` accelerates it without changing the recorded event
+timestamps:
+
+```bash
+python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz --replay-speed 10
+```
+
+Use a fresh data directory to keep replay rows separate from previous runs:
+
+```bash
+MDS_DATA_DIR=data-replay python -m market_data_service --replay examples/btcusdt-5m.jsonl.gz
+```
+
+The replay goes through the same Parquet writer, candle aggregator, API and
+dashboard as the live mode. It never constructs a Binance client. A trade gap in
+a recording is reported as missing because offline replay cannot call the REST
+backfill.
+
+With a locally built image:
+
+```bash
+docker build -t market-data-service .
+docker run --rm -p 8000:8000 \
+  -v "$PWD/examples:/replay:ro" -v mds-replay:/data \
+  -e MDS_REPLAY_FILE=/replay/btcusdt-5m.jsonl.gz \
+  market-data-service
+```
+
+To record another file:
+
+```bash
+python scripts/record_replay.py --duration 330 --output examples/my-5m.jsonl.gz
+```
+
+The recorder writes one metadata line with the depth snapshot, then one raw
+combined-stream frame per line. Gzip keeps a 5.5-minute BTCUSDT recording under
+5 MiB. The commands accept `--symbol`, `--ws-base` and `--rest-base` if you need
+another public endpoint or symbol.
 
 ## Container image
 
@@ -103,6 +160,7 @@ src/market_data_service/
 ├── models.py       normalized records
 ├── parser.py       strict Binance payload validation
 ├── ingestion.py    WebSocket loop, backoff, gap detection, backfill
+├── replay.py       offline frame replay with an embedded depth snapshot
 ├── depth.py        order book state machine and resync
 ├── aggregator.py   in-memory OHLCV for the live feed
 ├── storage.py      partitioned Parquet writer and rotation
@@ -112,7 +170,11 @@ src/market_data_service/
 └── static/         HTML, CSS and JavaScript, no framework
 
 scripts/
-└── benchmark.py    measured throughput, latency, disk and memory harness
+├── benchmark.py    measured throughput, latency, disk and memory harness
+└── record_replay.py  records a JSONL(.gz) stream for offline replay
+
+examples/
+└── btcusdt-5m.jsonl.gz  5.5-minute BTCUSDT recording used by replay and tests
 
 tests/
 ├── fake_exchange.py          fake WebSocket + REST exchange
@@ -124,6 +186,7 @@ tests/
 ├── test_depth.py              snapshot anchoring and resync
 ├── test_api.py                HTTP and WebSocket API
 ├── test_ingestion.py          backoff bounds
+├── test_replay.py             offline replay of the shipped recording
 └── test_integration_gap.py    five-second network cut, end to end
 ```
 
@@ -268,9 +331,9 @@ pytest -m integration -q
 | `GET` | `/api/v1/price?symbol=BTCUSDT` | Latest trade |
 | `GET` | `/api/v1/candles?interval=1m&limit=200` | OHLCV, intervals `1s`, `5s`, `1m` |
 | `GET` | `/api/v1/book?limit=20` | Current book, or the last snapshot from Parquet |
-| `GET` | `/api/v1/status` | Ingestion, lag, gaps and storage counters |
+| `GET` | `/api/v1/status` | Mode, replay progress, ingestion lag, gaps and storage |
 | `GET` | `/metrics` | Prometheus exposition |
-| `WS` | `/ws` | Live `trade`, `candle` and `book` frames |
+| `WS` | `/ws` | Live or replay `trade`, `candle` and `book` frames; `hello` includes the mode |
 
 Prices in JSON are strings, never floats:
 
@@ -345,7 +408,9 @@ All settings are environment variables with the `MDS_` prefix.
 | `MDS_RECONNECT_BASE_S` | `0.5` | Initial backoff |
 | `MDS_RECONNECT_MAX_S` | `30.0` | Backoff cap |
 | `MDS_MAX_BACKFILL_TRADES` | `50000` | Recovery budget per gap |
-| `MDS_ENABLE_INGESTION` | `true` | Disable ingestion for tests or static reads |
+| `MDS_ENABLE_INGESTION` | `true` | Disables live ingestion; replay still runs |
+| `MDS_REPLAY_FILE` | unset | Replay this JSONL(.gz) instead of the live stream |
+| `MDS_REPLAY_SPEED` | `1.0` | Replay pacing multiplier |
 | `MDS_LOG_LEVEL` | `INFO` | Python log level |
 | `MDS_CLOCK_OFFSET_S` | `0.0` | Added to host timestamps; used by the benchmark |
 
@@ -363,11 +428,13 @@ pytest -q
 
 The suite includes parser and aggregator unit tests, storage and DuckDB tests,
 order book resync tests, API tests and the five-second recovery integration
-test. CI runs lint, formatting, strict mypy and the full test suite on Python
-3.12, then builds the image and exercises `docker compose up`, the dashboard,
-the metrics endpoint and Prometheus. A second job clones the public repository
-into a fresh temporary directory and repeats the full suite and
-`docker compose up` from that clone.
+test. `tests/test_replay.py` loads the shipped recording, starts the app with no
+Binance client, replays it at high speed and checks the dashboard, price,
+candles, book, status and WebSocket hello. CI runs lint, formatting, strict mypy
+and the full test suite on Python 3.12, then builds the image and exercises
+`docker compose up`, the dashboard, the metrics endpoint and Prometheus. A
+second job clones the public repository into a fresh temporary directory and
+repeats the full suite and `docker compose up` from that clone.
 
 On a Linux machine with Docker, the clone validation can be reproduced with:
 
@@ -397,6 +464,12 @@ dashboard gets the live book from memory.
 candles as a second dataset would duplicate data and eventually disagree with
 it. The in-memory aggregator exists only to keep the live bucket fresh.
 
+**Replay uses the same pipeline.** The recording contains raw frames plus one
+depth snapshot. The replay runner feeds the ingestor's public frame handler at
+the recorded event pace, so Parquet, candles, the API and the dashboard are the
+same code paths as live. The depth snapshot is embedded to keep the mode
+offline, and a replay trade gap is reported as missing instead of calling REST.
+
 **No Celery, Kafka or Redis.** The minimum scope is one symbol per process. An
 in-process queue, an asyncio pipeline and Parquet files cover it without extra
 infrastructure.
@@ -417,6 +490,8 @@ tools. psutil is only used by `scripts/benchmark.py`.
   retention of aggregate trades. Very long outages can leave reported holes.
 - Book history is sampled, not exhaustive: the lake does not contain every
   diff update.
+- Replay is offline and finite. It cannot repair a gap in the recording, and the
+  dashboard stops receiving new data when the file ends.
 - The service trusts the host clock. If the host is not synchronized, set
   `MDS_CLOCK_OFFSET_S` from a measured offset or fix NTP.
 - No authentication, no multi-tenant isolation, no SLA. This is a read-only

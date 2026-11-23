@@ -177,9 +177,13 @@ class Ingestor:
             async for raw in socket:
                 if self._stop.is_set():
                     return
-                await self._handle_frame(raw)
+                await self.handle_frame(raw)
 
-    async def _handle_frame(self, raw: str | bytes) -> None:
+    async def handle_frame(self, raw: str | bytes) -> None:
+        """Parse and dispatch one raw combined-stream frame.
+
+        Public because the offline replay runner feeds the same path.
+        """
         try:
             event = parse_stream_message(raw, ingested_at=self._clock())
         except ParseError as exc:

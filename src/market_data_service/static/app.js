@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   symbol: null,
+  mode: "live",
   interval: 1,
   candles: [],
   book: { bids: [], asks: [] },
@@ -96,7 +97,13 @@ function setConn(connected) {
   const dot = $("dot");
   dot.classList.remove("ok", "bad");
   dot.classList.add(connected ? "ok" : "bad");
-  $("conn-text").textContent = connected ? "live" : "reconnecting";
+  const label = connected ? (state.mode === "replay" ? "replay" : "live") : "reconnecting";
+  $("conn-text").textContent = label;
+}
+
+function updateMode() {
+  $("tape-mode").textContent = state.mode;
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) setConn(true);
 }
 
 function connect() {
@@ -138,7 +145,9 @@ function handleMessage(message) {
   switch (message.type) {
     case "hello":
       state.symbol = message.symbol;
+      state.mode = message.mode === "replay" ? "replay" : "live";
       $("symbol").textContent = message.symbol;
+      updateMode();
       break;
     case "trade":
       onTrade(message);
@@ -266,8 +275,13 @@ function renderStatus(data) {
   const ingest = data.ingest;
   const storage = data.storage;
   const ingestion = $("st-ingest");
-  ingestion.textContent = ingest.connected ? "connected" : "reconnecting";
-  ingestion.className = `value ${ingest.connected ? "good" : "bad"}`;
+  if (state.mode === "replay") {
+    ingestion.textContent = "replay";
+    ingestion.className = "value good";
+  } else {
+    ingestion.textContent = ingest.connected ? "connected" : "reconnecting";
+    ingestion.className = `value ${ingest.connected ? "good" : "bad"}`;
+  }
 
   $("st-tradeid").textContent = ingest.last_trade_id ?? "--";
   const lag = ingest.lag_seconds;
